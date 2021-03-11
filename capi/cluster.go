@@ -34,7 +34,7 @@ func transformCluster(gsCRs *giantswarm.GSClusterCrs) *apiv1alpha3.Cluster {
 					CIDRBlocks: []string{gsCRs.AWSCluster.Spec.Provider.Pods.CIDRBlock},
 				},
 				//Services: &apiv1alpha3.NetworkRanges{
-					//			CIDRBlocks: []string{gsCRs.Cluster.Spec.ClusterNetwork.Services.CIDRBlocks[0]},
+				//			CIDRBlocks: []string{gsCRs.Cluster.Spec.ClusterNetwork.Services.CIDRBlocks[0]},
 				//},
 			},
 			ControlPlaneRef: &v1.ObjectReference{

@@ -66,7 +66,6 @@ func transformAWSCluster(awsCluster *giantswarmawsalpha3.AWSCluster) (*capiawsv1
 			Region: awsCluster.Spec.Provider.Region,
 			Bastion: capiawsv1alpha3.Bastion{
 				Enabled: false,
-
 			},
 		},
 	}
@@ -89,7 +88,7 @@ func fetchClusterSubnets(region string, vpcID string) (capiawsv1alpha3.Subnets, 
 				Values: aws.StringSlice([]string{vpcID}),
 			},
 			{
-				Name: aws.String("tag:giantswarm.io/stack"),
+				Name:   aws.String("tag:giantswarm.io/stack"),
 				Values: aws.StringSlice([]string{"tccp"}),
 			},
 		},

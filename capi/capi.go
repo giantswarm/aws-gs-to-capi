@@ -2,9 +2,8 @@ package capi
 
 import (
 	"fmt"
-	v1 "k8s.io/api/core/v1"
-
 	"github.com/giantswarm/microerror"
+	v1 "k8s.io/api/core/v1"
 	awsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
 	apiv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	kubeadmv1alpha3 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
@@ -15,6 +14,7 @@ import (
 
 type Crs struct {
 	UnitSecret *v1.Secret
+	EtcdCerts  *v1.Secret
 
 	Cluster                     *apiv1alpha3.Cluster
 	AWSCluster                  *awsv1alpha3.AWSCluster
@@ -30,7 +30,7 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 	clusterID := gsCRs.AWSCluster.Name
 	namespace := gsCRs.AWSCluster.Namespace
 
-	secret, err := unitSecret(clusterID, namespace, gsCRs.AWSControlPlane.Spec.InstanceType)
+	secret, err := unitSecret(clusterID, namespace, etcdEndpointFromDomain(gsCRs.AWSCluster.Spec.Cluster.DNS.Domain, clusterID))
 	if err != nil {
 		return nil, microerror.Mask(err)
 	}
@@ -46,8 +46,13 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 
 	cpMachineTemplate := transformAWSMachineTemplateCP(gsCRs.AWSControlPlane, clusterID)
 
+	gsCRs.EtcdCerts.Name = certsSecretName(clusterID)
+	gsCRs.EtcdCerts.APIVersion = secret.APIVersion
+	gsCRs.EtcdCerts.Kind = secret.Kind
+
 	crs := &Crs{
 		UnitSecret: &secret,
+		EtcdCerts:  gsCRs.EtcdCerts,
 
 		Cluster:                     cluster,
 		AWSCluster:                  awsCluster,
@@ -66,6 +71,13 @@ func PrintOutCrs(crs *Crs) error {
 		return microerror.Mask(err)
 	}
 	out += string(secret)
+	out += "\n---\n"
+
+	certs, err := yaml.Marshal(crs.EtcdCerts)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	out += string(certs)
 	out += "\n---\n"
 
 	cluster, err := yaml.Marshal(crs.Cluster)
@@ -99,4 +111,8 @@ func PrintOutCrs(crs *Crs) error {
 	fmt.Printf("%s\n", out)
 
 	return nil
+}
+
+func etcdEndpointFromDomain(domain string, clusterID string) string {
+	return fmt.Sprintf("etcd.%s.k8s.%s", clusterID, domain)
 }

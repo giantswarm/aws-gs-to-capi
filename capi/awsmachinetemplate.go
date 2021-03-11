@@ -26,9 +26,18 @@ func transformAWSMachineTemplateCP(cp *giantswarmawsalpha3.AWSControlPlane, clus
 			Template: capiawsv1alpha3.AWSMachineTemplateResource{
 				Spec: capiawsv1alpha3.AWSMachineSpec{
 					IAMInstanceProfile: "control-plane.cluster-api-provider-aws.sigs.k8s.io",
-					InstanceType: cp.Spec.InstanceType,
-					SSHKeyName: &sshKeyName,
-
+					InstanceType:       cp.Spec.InstanceType,
+					SSHKeyName:         &sshKeyName,
+					AdditionalSecurityGroups: []capiawsv1alpha3.AWSResourceReference{
+						{
+							Filters: []capiawsv1alpha3.Filter{
+								{
+									Name:   "tag:Name",
+									Values: []string{fmt.Sprintf("%s-master", clusterID)},
+								},
+							},
+						},
+					},
 				},
 			},
 		},

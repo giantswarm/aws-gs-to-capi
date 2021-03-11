@@ -36,7 +36,6 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 				Kind:       "AWSMachineTemplate",
 			},
 			KubeadmConfigSpec: kubeadmapiv1alpha3.KubeadmConfigSpec{
-
 				ClusterConfiguration: &kubeadmtypev1beta1.ClusterConfiguration{
 					APIServer: kubeadmtypev1beta1.APIServer{
 						ControlPlaneComponent: kubeadmtypev1beta1.ControlPlaneComponent{
@@ -44,9 +43,9 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 								"cloud-provider": "aws",
 							},
 						},
-						CertSANs: []string{
-							gsCRs.Cluster.Status.APIEndpoints[0].Host,
-						},
+						//CertSANs: []string{
+						//	gsCRs.Cluster.Status.APIEndpoints[0].Host,
+						//},
 					},
 					ControllerManager: kubeadmtypev1beta1.ControlPlaneComponent{
 						ExtraArgs: map[string]string{
@@ -57,7 +56,12 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						Local: &kubeadmtypev1beta1.LocalEtcd{
 							DataDir: "/var/lib/etcd/data",
 							ExtraArgs: map[string]string{
-								"listen-client-urls": "https://0.0.0.0:2379",
+								"peer-cert-file":        "/etc/kubernetes/pki/etcd/old-etcd-cert.pem",
+								"peer-key-file":         "/etc/kubernetes/pki/etcd/old-etcd-key.pem",
+								"peer-trusted-ca-file":  "/etc/kubernetes/pki/etcd/ca-bundle.pem",
+								"initial-cluster-state": "existing",
+								"initial-cluster":       "$ETCD_INITIAL_CLUSTER",
+								"trusted-ca-file":       "/etc/kubernetes/pki/etcd/ca-bundle.pem",
 							},
 							ImageMeta: kubeadmtypev1beta1.ImageMeta{
 								ImageTag:        "v3.4.13",
@@ -84,7 +88,7 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 				},
 				Files: []kubeadmapiv1alpha3.File{
 					{
-						Path:  "/etc/systemd/system/etcd3-attach-deps.service",
+						Path:  "/migration/join-existing-cluster.sh",
 						Owner: "root:root",
 						ContentFrom: &kubeadmapiv1alpha3.FileSource{
 							Secret: kubeadmapiv1alpha3.SecretFileSource{
@@ -93,10 +97,39 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 							},
 						},
 					},
+					{
+						Path:  "/etc/kubernetes/pki/etcd/old-etcd-ca.pem",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: certsSecretName(clusterID),
+								Key:  "ca",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/etcd/old-etcd-key.pem",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: certsSecretName(clusterID),
+								Key:  "key",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/etcd/old-etcd-cert.pem",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: certsSecretName(clusterID),
+								Key:  "crt",
+							},
+						},
+					},
 				},
 				PreKubeadmCommands: []string{
-					"systemctl enable etcd3-attach-deps.service",
-					"systemctl start etcd3-attach-deps.service",
+					"/bin/sh /migration/join-existing-cluster.sh",
 				},
 			},
 			Replicas: &replicas,
