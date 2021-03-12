@@ -17,7 +17,7 @@ func kubeAdmControlPlaneName(clusterID string) string {
 }
 
 func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) *kubeadmv1alpha3.KubeadmControlPlane {
-	replicas := int32(gsCRs.G8sControlPlane.Spec.Replicas)
+	replicas := int32(1) //int32(gsCRs.G8sControlPlane.Spec.Replicas)
 	clusterID := gsCRs.AWSCluster.Name
 
 	cp := &kubeadmv1alpha3.KubeadmControlPlane{
@@ -40,7 +40,16 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 					APIServer: kubeadmtypev1beta1.APIServer{
 						ControlPlaneComponent: kubeadmtypev1beta1.ControlPlaneComponent{
 							ExtraArgs: map[string]string{
-								"cloud-provider": "aws",
+								"cloud-provider":             "aws",
+								"etcd-prefix":                "giantswarm.io",
+								"encryption-provider-config": "/etc/kubernetes/encryption/k8s-encryption-config.yaml",
+							},
+							ExtraVolumes: []kubeadmtypev1beta1.HostPathMount{
+								{
+									Name:      "encryption",
+									HostPath:  "/etc/kubernetes/encryption/",
+									MountPath: "/etc/kubernetes/encryption/",
+								},
 							},
 						},
 						//CertSANs: []string{
@@ -58,10 +67,9 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 							ExtraArgs: map[string]string{
 								"peer-cert-file":        "/etc/kubernetes/pki/etcd/old-etcd-cert.pem",
 								"peer-key-file":         "/etc/kubernetes/pki/etcd/old-etcd-key.pem",
-								"peer-trusted-ca-file":  "/etc/kubernetes/pki/etcd/ca-bundle.pem",
+								"peer-trusted-ca-file":  "/etc/kubernetes/pki/etcd/old-etcd-ca.pem",
 								"initial-cluster-state": "existing",
 								"initial-cluster":       "$ETCD_INITIAL_CLUSTER",
-								"trusted-ca-file":       "/etc/kubernetes/pki/etcd/ca-bundle.pem",
 							},
 							ImageMeta: kubeadmtypev1beta1.ImageMeta{
 								ImageTag:        "v3.4.13",
@@ -92,8 +100,8 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						Owner: "root:root",
 						ContentFrom: &kubeadmapiv1alpha3.FileSource{
 							Secret: kubeadmapiv1alpha3.SecretFileSource{
-								Name: unitSecretName(clusterID),
-								Key:  unitSecretKey,
+								Name: customFilesSecretName(clusterID),
+								Key:  migrationScriptKey,
 							},
 						},
 					},
@@ -102,7 +110,7 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						Owner: "root:root",
 						ContentFrom: &kubeadmapiv1alpha3.FileSource{
 							Secret: kubeadmapiv1alpha3.SecretFileSource{
-								Name: certsSecretName(clusterID),
+								Name: oldEtcdCertsSecretName(clusterID),
 								Key:  "ca",
 							},
 						},
@@ -112,7 +120,7 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						Owner: "root:root",
 						ContentFrom: &kubeadmapiv1alpha3.FileSource{
 							Secret: kubeadmapiv1alpha3.SecretFileSource{
-								Name: certsSecretName(clusterID),
+								Name: oldEtcdCertsSecretName(clusterID),
 								Key:  "key",
 							},
 						},
@@ -122,8 +130,28 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						Owner: "root:root",
 						ContentFrom: &kubeadmapiv1alpha3.FileSource{
 							Secret: kubeadmapiv1alpha3.SecretFileSource{
-								Name: certsSecretName(clusterID),
+								Name: oldEtcdCertsSecretName(clusterID),
 								Key:  "crt",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/encryption/k8s-encryption-config.yaml",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: customFilesSecretName(clusterID),
+								Key:  encryptionKeyKey,
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/config/proxy-config.yml",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: customFilesSecretName(clusterID),
+								Key:  kubeProxyKubeconfigKey,
 							},
 						},
 					},

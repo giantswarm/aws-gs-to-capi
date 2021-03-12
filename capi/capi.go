@@ -1,7 +1,11 @@
 package capi
 
 import (
+	"context"
+	"encoding/base64"
 	"fmt"
+	"github.com/giantswarm/aws-gs-to-capi/ctrlclient"
+
 	"github.com/giantswarm/microerror"
 	v1 "k8s.io/api/core/v1"
 	awsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
@@ -20,6 +24,7 @@ type Crs struct {
 	AWSCluster                  *awsv1alpha3.AWSCluster
 	ControlPlane                *kubeadmv1alpha3.KubeadmControlPlane
 	ControlPlaneMachineTemplate *awsv1alpha3.AWSMachineTemplate
+	OldControlPlaneMachines     []apiv1alpha3.Machine
 
 	MachineDeployments         []*apiv1alpha3.MachineDeployment
 	MachineDeploymentTemplates []*awsv1alpha3.AWSMachineTemplate
@@ -30,11 +35,21 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 	clusterID := gsCRs.AWSCluster.Name
 	namespace := gsCRs.AWSCluster.Namespace
 
-	secret, err := unitSecret(clusterID, namespace, etcdEndpointFromDomain(gsCRs.AWSCluster.Spec.Cluster.DNS.Domain, clusterID))
+	p := CustomFilesParams{
+		APIEndpoint:   apiEndpointFromDomain(gsCRs.AWSCluster.Spec.Cluster.DNS.Domain, clusterID),
+		ClusterID:     clusterID,
+		ETCDEndpoint:  etcdEndpointFromDomain(gsCRs.AWSCluster.Spec.Cluster.DNS.Domain, clusterID),
+		EncryptionKey: string(gsCRs.EtcdEncryptionKey.Data["encryption"]),
+		Namespace:     namespace,
+		KubeProxyCA:   base64.StdEncoding.EncodeToString(gsCRs.KubeproxyCerts.Data["ca"]),
+		KubeProxyKey:  base64.StdEncoding.EncodeToString(gsCRs.KubeproxyCerts.Data["key"]),
+		KubeProxyCrt:  base64.StdEncoding.EncodeToString(gsCRs.KubeproxyCerts.Data["crt"]),
+	}
+
+	secret, err := customFilesSecret(p)
 	if err != nil {
 		return nil, microerror.Mask(err)
 	}
-
 	cluster := transformCluster(gsCRs)
 
 	awsCluster, err := transformAWSCluster(gsCRs.AWSCluster)
@@ -44,11 +59,16 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 
 	kubeadmCP := transformKubeAdmControlPlane(gsCRs, k8sVersion)
 
-	cpMachineTemplate := transformAWSMachineTemplateCP(gsCRs.AWSControlPlane, clusterID)
+	cpMachineTemplate, err := transformAWSMachineTemplateCP(gsCRs.AWSControlPlane, clusterID, gsCRs.AWSCluster.Spec.Provider.Region)
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
 
-	gsCRs.EtcdCerts.Name = certsSecretName(clusterID)
+	gsCRs.EtcdCerts.Name = oldEtcdCertsSecretName(clusterID)
 	gsCRs.EtcdCerts.APIVersion = secret.APIVersion
 	gsCRs.EtcdCerts.Kind = secret.Kind
+
+	oldCpMachines := oldControlPlaneMachines(clusterID, namespace, gsCRs.G8sControlPlane.Spec.Replicas)
 
 	crs := &Crs{
 		UnitSecret: &secret,
@@ -58,6 +78,7 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 		AWSCluster:                  awsCluster,
 		ControlPlane:                kubeadmCP,
 		ControlPlaneMachineTemplate: cpMachineTemplate,
+		OldControlPlaneMachines:     oldCpMachines,
 	}
 
 	return crs, nil
@@ -108,11 +129,66 @@ func PrintOutCrs(crs *Crs) error {
 	out += string(awsControlPlaneMachine)
 	out += "\n---\n"
 
+	for _, old := range crs.OldControlPlaneMachines {
+		m, err := yaml.Marshal(old)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+		out += string(m)
+		out += "\n---\n"
+	}
+
 	fmt.Printf("%s\n", out)
+
+	return nil
+}
+
+func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
+	ctx := context.Background()
+	ctrl, err := ctrlclient.GetCtrlClient(k8sContext)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	err = ctrl.Create(ctx, crs.UnitSecret)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	err = ctrl.Create(ctx, crs.EtcdCerts)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Create(ctx, crs.Cluster)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Create(ctx, crs.AWSCluster)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Create(ctx, crs.ControlPlane)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Create(ctx, crs.ControlPlaneMachineTemplate)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	for _, old := range crs.OldControlPlaneMachines {
+		err = ctrl.Create(ctx, &old)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+	}
 
 	return nil
 }
 
 func etcdEndpointFromDomain(domain string, clusterID string) string {
 	return fmt.Sprintf("etcd.%s.k8s.%s", clusterID, domain)
+}
+func apiEndpointFromDomain(domain string, clusterID string) string {
+	return fmt.Sprintf("api.%s.k8s.%s", clusterID, domain)
 }
