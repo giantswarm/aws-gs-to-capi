@@ -4,15 +4,18 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"github.com/giantswarm/aws-gs-to-capi/ctrlclient"
+	"time"
 
 	"github.com/giantswarm/microerror"
 	v1 "k8s.io/api/core/v1"
 	awsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
 	apiv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	kubeadmv1alpha3 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
+
+	ctrlv1 "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 
+	"github.com/giantswarm/aws-gs-to-capi/ctrlclient"
 	"github.com/giantswarm/aws-gs-to-capi/giantswarm"
 )
 
@@ -67,6 +70,8 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 	gsCRs.EtcdCerts.Name = oldEtcdCertsSecretName(clusterID)
 	gsCRs.EtcdCerts.APIVersion = secret.APIVersion
 	gsCRs.EtcdCerts.Kind = secret.Kind
+	gsCRs.EtcdCerts.ResourceVersion = ""
+	gsCRs.EtcdCerts.UID = ""
 
 	oldCpMachines := oldControlPlaneMachines(clusterID, namespace, gsCRs.G8sControlPlane.Spec.Replicas)
 
@@ -176,8 +181,93 @@ func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 		return microerror.Mask(err)
 	}
 
-	for _, old := range crs.OldControlPlaneMachines {
+	for i, old := range crs.OldControlPlaneMachines {
+		old.OwnerReferences[0].UID = crs.ControlPlane.UID
 		err = ctrl.Create(ctx, &old)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+
+		time.Sleep(time.Second * 2)
+		err = ctrl.Get(ctx,
+			ctrlv1.ObjectKey{
+				Name:      old.Name,
+				Namespace: old.Namespace,
+			},
+			&old)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+		FillMachineStatus(&old, i+1)
+		err = ctrl.Status().Update(ctx, &old)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+
+		awsMachine := fakeAWSMachine(old.Name, old.Namespace, i)
+		err = ctrl.Create(ctx, awsMachine)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+
+		kubeadmConfig := fakeKubeAdmConfig(old.Name, old.Namespace, i)
+		err = ctrl.Create(ctx, kubeadmConfig)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+	}
+
+	return nil
+}
+
+func DeleteResourcesInTargetK8s(crs *Crs, k8sContext string) error {
+	ctx := context.Background()
+	ctrl, err := ctrlclient.GetCtrlClient(k8sContext)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	err = ctrl.Delete(ctx, crs.UnitSecret)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	err = ctrl.Delete(ctx, crs.EtcdCerts)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Delete(ctx, crs.Cluster)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Delete(ctx, crs.AWSCluster)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Delete(ctx, crs.ControlPlane)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Delete(ctx, crs.ControlPlaneMachineTemplate)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	for i, old := range crs.OldControlPlaneMachines {
+		old.OwnerReferences[0].UID = crs.ControlPlane.UID
+		err = ctrl.Delete(ctx, &old)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+
+		awsMachine := fakeAWSMachine(old.Name, old.Namespace, i)
+		err = ctrl.Delete(ctx, awsMachine)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+
+		kubeadmConfig := fakeKubeAdmConfig(old.Name, old.Namespace, i)
+		err = ctrl.Delete(ctx, kubeadmConfig)
 		if err != nil {
 			return microerror.Mask(err)
 		}

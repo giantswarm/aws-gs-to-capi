@@ -16,8 +16,8 @@ type Flag struct {
 	ClusterID  string
 	K8sVersion string
 
-	TargetK8sContext     string
-	CreateResourcesInAPI bool
+	TargetK8sContext string
+	DeleteResources  bool
 }
 
 func main() {
@@ -34,7 +34,7 @@ func mainError() error {
 	flag.StringVar(&f.AWSRegion, "aws-region", "eu-west-1", "AWS Region.")
 	flag.StringVar(&f.ClusterID, "cluster-id", "", "GS cluster ID.")
 	flag.StringVar(&f.K8sVersion, "k8s-version", "v1.19.4", "Kubernetes version fot the new CAPI cluster")
-	flag.BoolVar(&f.CreateResourcesInAPI, "create-resources", false, "If set to true tool will create resources in the target k8s.")
+	flag.BoolVar(&f.DeleteResources, "delete-resources", false, "If set to true tool will create resources in the target k8s.")
 	flag.StringVar(&f.TargetK8sContext, "target-k8s-context", "", "define in which k8s context the resources should be created")
 
 	if len(os.Args) > 1 && os.Args[1] == "--help" {
@@ -42,6 +42,11 @@ func mainError() error {
 		return nil
 	}
 	flag.Parse()
+
+	if f.TargetK8sContext == "" {
+		fmt.Printf("ERROR: target context cannot be empty")
+		return nil
+	}
 
 	gsCrs, err := giantswarm.FetchCrs(f.ClusterID)
 	if err != nil {
@@ -53,18 +58,10 @@ func mainError() error {
 		return microerror.Mask(err)
 	}
 
-	if f.CreateResourcesInAPI {
-		if f.TargetK8sContext == "" {
-			fmt.Printf("ERROR: f.TargetK8sContext cannot be empty when CreateResourcesInAPI is set to true.")
-			return nil
-		} else {
-			err = capi.CreateResourcesInTargetK8s(capiCRs, f.TargetK8sContext)
-			if err != nil {
-				return microerror.Mask(err)
-			}
-		}
+	if f.DeleteResources {
+		err = capi.DeleteResourcesInTargetK8s(capiCRs, f.TargetK8sContext)
 	} else {
-		err = capi.PrintOutCrs(capiCRs)
+		err = capi.CreateResourcesInTargetK8s(capiCRs, f.TargetK8sContext)
 		if err != nil {
 			return microerror.Mask(err)
 		}

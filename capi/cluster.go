@@ -33,9 +33,10 @@ func transformCluster(gsCRs *giantswarm.GSClusterCrs) *apiv1alpha3.Cluster {
 				Pods: &apiv1alpha3.NetworkRanges{
 					CIDRBlocks: []string{gsCRs.AWSCluster.Spec.Provider.Pods.CIDRBlock},
 				},
-				//Services: &apiv1alpha3.NetworkRanges{
-				//			CIDRBlocks: []string{gsCRs.Cluster.Spec.ClusterNetwork.Services.CIDRBlocks[0]},
-				//},
+				Services: &apiv1alpha3.NetworkRanges{
+					CIDRBlocks: []string{""},
+				},
+				ServiceDomain: "cluster.local",
 			},
 			ControlPlaneRef: &v1.ObjectReference{
 				APIVersion: kubeadmv1alpha3.GroupVersion.String(),

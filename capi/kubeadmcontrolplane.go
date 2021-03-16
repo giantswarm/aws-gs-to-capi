@@ -146,12 +146,22 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						},
 					},
 					{
-						Path:  "/etc/kubernetes/config/proxy-config.yml",
+						Path:  "/etc/kubernetes/config/kube-proxy.yaml",
 						Owner: "root:root",
 						ContentFrom: &kubeadmapiv1alpha3.FileSource{
 							Secret: kubeadmapiv1alpha3.SecretFileSource{
 								Name: customFilesSecretName(clusterID),
 								Key:  kubeProxyKubeconfigKey,
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/config/proxy-config.yml",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: customFilesSecretName(clusterID),
+								Key:  kubeProxyConfigKey,
 							},
 						},
 					},

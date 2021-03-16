@@ -13,6 +13,7 @@ const (
 	migrationScriptKey     = "migration"
 	encryptionKeyKey       = "encryption"
 	kubeProxyKubeconfigKey = "kubeproxy-kubeconfig"
+	kubeProxyConfigKey     = "kubeproxy-config"
 )
 
 type CustomFilesParams struct {
@@ -54,6 +55,7 @@ func customFilesSecret(params CustomFilesParams) (v1.Secret, error) {
 			migrationScriptKey:     []byte(migrationScriptContent),
 			encryptionKeyKey:       []byte(encryptionKeyContent),
 			kubeProxyKubeconfigKey: []byte(kubeProxyKubeconfigContent),
+			kubeProxyConfigKey:     []byte(kubeProxyConfig),
 		},
 	}
 

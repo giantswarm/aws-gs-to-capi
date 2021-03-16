@@ -2,6 +2,8 @@ package capi
 
 const (
 	unitTmpl = `#!/bin/sh
+# set proper hostname
+hostnamectl set-hostname $(curl http://169.254.169.254/latest/meta-data/local-hostname)
 
 # create etcd ca bundle
 cat /etc/kubernetes/pki/etcd/ca.crt /etc/kubernetes/pki/etcd/old-etcd-ca.pem > /etc/kubernetes/pki/etcd/ca-bundle.pem
@@ -80,3 +82,10 @@ contexts:
     user: proxy
   name: service-account-context
 current-context: service-account-context`
+
+const kubeProxyConfig = `apiVersion: kubeproxy.config.k8s.io/v1alpha1
+clientConnection:
+  kubeconfig: /etc/kubernetes/kubeconfig/kube-proxy.yaml
+kind: KubeProxyConfiguration
+mode: iptables
+metricsBindAddress: 0.0.0.0:10249`

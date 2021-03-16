@@ -10,6 +10,7 @@ import (
 	awsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
 	apiv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	capi "sigs.k8s.io/cluster-api/api/v1alpha3"
+	kubeadmbootstrapv1alpha3 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
 	kubeadmv1alpha3 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
 	expcapi "sigs.k8s.io/cluster-api/exp/api/v1alpha3"
 	ctrl "sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,6 +26,7 @@ func GetCtrlClient(context string) (ctrl.Client, error) {
 		apiv1alpha3.AddToScheme,
 		corev1.AddToScheme,
 		awsv1alpha3.AddToScheme,
+		kubeadmbootstrapv1alpha3.AddToScheme,
 	}
 
 	// Extend the global client-go scheme which is used by all the tools under

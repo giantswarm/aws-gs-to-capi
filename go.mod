@@ -14,12 +14,12 @@ require (
 	golang.org/x/crypto v0.0.0-20201117144127-c1f2f97bffc9 // indirect
 	golang.org/x/oauth2 v0.0.0-20200902213428-5d25da1a8d43 // indirect
 	golang.org/x/tools v0.0.0-20200904185747-39188db58858 // indirect
-	k8s.io/api v0.20.4
-	k8s.io/apimachinery v0.20.4
-	k8s.io/client-go v0.20.4
-	k8s.io/kubectl v0.20.4
+	k8s.io/api v0.17.9
+	k8s.io/apimachinery v0.17.9
+	k8s.io/client-go v0.17.9
+	k8s.io/kubectl v0.17.9
 	sigs.k8s.io/cluster-api v0.3.14
 	sigs.k8s.io/cluster-api-provider-aws v0.6.4
-	sigs.k8s.io/controller-runtime v0.8.2
+	sigs.k8s.io/controller-runtime v0.5.14
 	sigs.k8s.io/yaml v1.2.0
 )
