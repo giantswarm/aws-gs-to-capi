@@ -4,24 +4,24 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"time"
 
+	"github.com/giantswarm/aws-gs-to-capi/vault"
 	"github.com/giantswarm/microerror"
 	v1 "k8s.io/api/core/v1"
 	awsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
+	capiawsexpv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/exp/api/v1alpha3"
 	apiv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	kubeadmv1alpha3 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
-
-	ctrlv1 "sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/yaml"
 
 	"github.com/giantswarm/aws-gs-to-capi/ctrlclient"
 	"github.com/giantswarm/aws-gs-to-capi/giantswarm"
 )
 
 type Crs struct {
-	UnitSecret *v1.Secret
-	EtcdCerts  *v1.Secret
+	CustomFiles *v1.Secret
+	EtcdCerts   *v1.Secret
+	SACerts     *v1.Secret
+	CACerts     *v1.Secret
 
 	Cluster                     *apiv1alpha3.Cluster
 	AWSCluster                  *awsv1alpha3.AWSCluster
@@ -29,7 +29,7 @@ type Crs struct {
 	ControlPlaneMachineTemplate *awsv1alpha3.AWSMachineTemplate
 	OldControlPlaneMachines     []apiv1alpha3.Machine
 
-	MachineDeployments         []*apiv1alpha3.MachineDeployment
+	MachinePool                []*capiawsexpv1alpha3.AWSMachinePool
 	MachineDeploymentTemplates []*awsv1alpha3.AWSMachineTemplate
 }
 
@@ -42,7 +42,7 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 		APIEndpoint:   apiEndpointFromDomain(gsCRs.AWSCluster.Spec.Cluster.DNS.Domain, clusterID),
 		ClusterID:     clusterID,
 		ETCDEndpoint:  etcdEndpointFromDomain(gsCRs.AWSCluster.Spec.Cluster.DNS.Domain, clusterID),
-		EncryptionKey: string(gsCRs.EtcdEncryptionKey.Data["encryption"]),
+		EncryptionKey: string(gsCRs.EncryptionKey.Data["encryption"]),
 		Namespace:     namespace,
 		KubeProxyCA:   base64.StdEncoding.EncodeToString(gsCRs.KubeproxyCerts.Data["ca"]),
 		KubeProxyKey:  base64.StdEncoding.EncodeToString(gsCRs.KubeproxyCerts.Data["key"]),
@@ -67,85 +67,53 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 		return nil, microerror.Mask(err)
 	}
 
-	gsCRs.EtcdCerts.Name = oldEtcdCertsSecretName(clusterID)
+	gsCRs.EtcdCerts.Name = etcdCertsName(clusterID)
 	gsCRs.EtcdCerts.APIVersion = secret.APIVersion
 	gsCRs.EtcdCerts.Kind = secret.Kind
 	gsCRs.EtcdCerts.ResourceVersion = ""
 	gsCRs.EtcdCerts.UID = ""
+	gsCRs.EtcdCerts.Data["tls.crt"] = gsCRs.EtcdCerts.Data["crt"]
+	gsCRs.EtcdCerts.Data["tls.key"] = gsCRs.EtcdCerts.Data["key"]
 
-	oldCpMachines := oldControlPlaneMachines(clusterID, namespace, gsCRs.G8sControlPlane.Spec.Replicas)
+	gsCRs.SACerts.Name = saCertsName(clusterID)
+	gsCRs.SACerts.APIVersion = secret.APIVersion
+	gsCRs.SACerts.Kind = secret.Kind
+	gsCRs.SACerts.ResourceVersion = ""
+	gsCRs.SACerts.UID = ""
+	gsCRs.SACerts.Data["tls.crt"] = gsCRs.SACerts.Data["crt"]
+	gsCRs.SACerts.Data["tls.key"] = gsCRs.SACerts.Data["key"]
+
+	caPrivKey, err := vault.GetVaultCAKey(clusterID)
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+
+	caCerts := gsCRs.EtcdCerts.DeepCopy()
+	caCerts.Name = caCertsName(clusterID)
+	caCerts.Data["tls.crt"] = caCerts.Data["ca"]
+	caCerts.Data["tls.key"] = []byte(caPrivKey)
 
 	crs := &Crs{
-		UnitSecret: &secret,
-		EtcdCerts:  gsCRs.EtcdCerts,
+		CustomFiles: &secret,
+		EtcdCerts:   gsCRs.EtcdCerts,
+		SACerts:     gsCRs.SACerts,
+		CACerts:     caCerts,
 
 		Cluster:                     cluster,
 		AWSCluster:                  awsCluster,
 		ControlPlane:                kubeadmCP,
 		ControlPlaneMachineTemplate: cpMachineTemplate,
-		OldControlPlaneMachines:     oldCpMachines,
+	}
+
+	for _, md := range gsCRs.AWSMachineDeployments {
+		mp, err := awsmachinepool(md, gsCRs.AWSCluster.Spec.Provider.Region, clusterID)
+		if err != nil {
+			return nil, microerror.Mask(err)
+		}
+		crs.MachinePool = append(crs.MachinePool, mp)
 	}
 
 	return crs, nil
-}
-
-func PrintOutCrs(crs *Crs) error {
-	out := ""
-
-	secret, err := yaml.Marshal(crs.UnitSecret)
-	if err != nil {
-		return microerror.Mask(err)
-	}
-	out += string(secret)
-	out += "\n---\n"
-
-	certs, err := yaml.Marshal(crs.EtcdCerts)
-	if err != nil {
-		return microerror.Mask(err)
-	}
-	out += string(certs)
-	out += "\n---\n"
-
-	cluster, err := yaml.Marshal(crs.Cluster)
-	if err != nil {
-		return microerror.Mask(err)
-	}
-	out += string(cluster)
-	out += "\n---\n"
-
-	awsCluster, err := yaml.Marshal(crs.AWSCluster)
-	if err != nil {
-		return microerror.Mask(err)
-	}
-	out += string(awsCluster)
-	out += "\n---\n"
-
-	controlPlane, err := yaml.Marshal(crs.ControlPlane)
-	if err != nil {
-		return microerror.Mask(err)
-	}
-	out += string(controlPlane)
-	out += "\n---\n"
-
-	awsControlPlaneMachine, err := yaml.Marshal(crs.ControlPlaneMachineTemplate)
-	if err != nil {
-		return microerror.Mask(err)
-	}
-	out += string(awsControlPlaneMachine)
-	out += "\n---\n"
-
-	for _, old := range crs.OldControlPlaneMachines {
-		m, err := yaml.Marshal(old)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-		out += string(m)
-		out += "\n---\n"
-	}
-
-	fmt.Printf("%s\n", out)
-
-	return nil
 }
 
 func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
@@ -155,7 +123,7 @@ func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 		return microerror.Mask(err)
 	}
 
-	err = ctrl.Create(ctx, crs.UnitSecret)
+	err = ctrl.Create(ctx, crs.CustomFiles)
 	if err != nil {
 		return microerror.Mask(err)
 	}
@@ -164,6 +132,15 @@ func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 	if err != nil {
 		return microerror.Mask(err)
 	}
+	err = ctrl.Create(ctx, crs.SACerts)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Create(ctx, crs.CACerts)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
 	err = ctrl.Create(ctx, crs.Cluster)
 	if err != nil {
 		return microerror.Mask(err)
@@ -181,37 +158,8 @@ func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 		return microerror.Mask(err)
 	}
 
-	for i, old := range crs.OldControlPlaneMachines {
-		old.OwnerReferences[0].UID = crs.ControlPlane.UID
-		err = ctrl.Create(ctx, &old)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-
-		time.Sleep(time.Second * 2)
-		err = ctrl.Get(ctx,
-			ctrlv1.ObjectKey{
-				Name:      old.Name,
-				Namespace: old.Namespace,
-			},
-			&old)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-		FillMachineStatus(&old, i+1)
-		err = ctrl.Status().Update(ctx, &old)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-
-		awsMachine := fakeAWSMachine(old.Name, old.Namespace, i)
-		err = ctrl.Create(ctx, awsMachine)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-
-		kubeadmConfig := fakeKubeAdmConfig(old.Name, old.Namespace, i)
-		err = ctrl.Create(ctx, kubeadmConfig)
+	for _, mp := range crs.MachinePool {
+		err = ctrl.Create(ctx, mp)
 		if err != nil {
 			return microerror.Mask(err)
 		}
@@ -227,7 +175,7 @@ func DeleteResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 		return microerror.Mask(err)
 	}
 
-	err = ctrl.Delete(ctx, crs.UnitSecret)
+	err = ctrl.Delete(ctx, crs.CustomFiles)
 	if err != nil {
 		return microerror.Mask(err)
 	}
@@ -253,21 +201,8 @@ func DeleteResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 		return microerror.Mask(err)
 	}
 
-	for i, old := range crs.OldControlPlaneMachines {
-		old.OwnerReferences[0].UID = crs.ControlPlane.UID
-		err = ctrl.Delete(ctx, &old)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-
-		awsMachine := fakeAWSMachine(old.Name, old.Namespace, i)
-		err = ctrl.Delete(ctx, awsMachine)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-
-		kubeadmConfig := fakeKubeAdmConfig(old.Name, old.Namespace, i)
-		err = ctrl.Delete(ctx, kubeadmConfig)
+	for _, mp := range crs.MachinePool {
+		err = ctrl.Delete(ctx, mp)
 		if err != nil {
 			return microerror.Mask(err)
 		}

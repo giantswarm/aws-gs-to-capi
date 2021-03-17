@@ -60,6 +60,9 @@ func mainError() error {
 
 	if f.DeleteResources {
 		err = capi.DeleteResourcesInTargetK8s(capiCRs, f.TargetK8sContext)
+		if err != nil {
+			return microerror.Mask(err)
+		}
 	} else {
 		err = capi.CreateResourcesInTargetK8s(capiCRs, f.TargetK8sContext)
 		if err != nil {

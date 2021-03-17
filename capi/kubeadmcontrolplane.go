@@ -17,7 +17,7 @@ func kubeAdmControlPlaneName(clusterID string) string {
 }
 
 func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) *kubeadmv1alpha3.KubeadmControlPlane {
-	replicas := int32(1) //int32(gsCRs.G8sControlPlane.Spec.Replicas)
+	replicas := int32(1)
 	clusterID := gsCRs.AWSCluster.Name
 
 	cp := &kubeadmv1alpha3.KubeadmControlPlane{
@@ -52,9 +52,9 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 								},
 							},
 						},
-						//CertSANs: []string{
-						//	gsCRs.Cluster.Status.APIEndpoints[0].Host,
-						//},
+						CertSANs: []string{
+							apiEndpointFromDomain(gsCRs.AWSCluster.Spec.Cluster.DNS.Domain, clusterID),
+						},
 					},
 					ControllerManager: kubeadmtypev1beta1.ControlPlaneComponent{
 						ExtraArgs: map[string]string{
@@ -65,14 +65,12 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						Local: &kubeadmtypev1beta1.LocalEtcd{
 							DataDir: "/var/lib/etcd/data",
 							ExtraArgs: map[string]string{
-								"peer-cert-file":        "/etc/kubernetes/pki/etcd/old-etcd-cert.pem",
-								"peer-key-file":         "/etc/kubernetes/pki/etcd/old-etcd-key.pem",
-								"peer-trusted-ca-file":  "/etc/kubernetes/pki/etcd/old-etcd-ca.pem",
-								"initial-cluster-state": "existing",
-								"initial-cluster":       "$ETCD_INITIAL_CLUSTER",
+								"initial-cluster-state":                          "existing",
+								"initial-cluster":                                "$ETCD_INITIAL_CLUSTER",
+								"experimental-peer-skip-client-san-verification": "true",
 							},
 							ImageMeta: kubeadmtypev1beta1.ImageMeta{
-								ImageTag:        "v3.4.13",
+								ImageTag:        "v3.4.14",
 								ImageRepository: "quay.io/giantswarm",
 							},
 						},
@@ -106,36 +104,6 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 						},
 					},
 					{
-						Path:  "/etc/kubernetes/pki/etcd/old-etcd-ca.pem",
-						Owner: "root:root",
-						ContentFrom: &kubeadmapiv1alpha3.FileSource{
-							Secret: kubeadmapiv1alpha3.SecretFileSource{
-								Name: oldEtcdCertsSecretName(clusterID),
-								Key:  "ca",
-							},
-						},
-					},
-					{
-						Path:  "/etc/kubernetes/pki/etcd/old-etcd-key.pem",
-						Owner: "root:root",
-						ContentFrom: &kubeadmapiv1alpha3.FileSource{
-							Secret: kubeadmapiv1alpha3.SecretFileSource{
-								Name: oldEtcdCertsSecretName(clusterID),
-								Key:  "key",
-							},
-						},
-					},
-					{
-						Path:  "/etc/kubernetes/pki/etcd/old-etcd-cert.pem",
-						Owner: "root:root",
-						ContentFrom: &kubeadmapiv1alpha3.FileSource{
-							Secret: kubeadmapiv1alpha3.SecretFileSource{
-								Name: oldEtcdCertsSecretName(clusterID),
-								Key:  "crt",
-							},
-						},
-					},
-					{
 						Path:  "/etc/kubernetes/encryption/k8s-encryption-config.yaml",
 						Owner: "root:root",
 						ContentFrom: &kubeadmapiv1alpha3.FileSource{
@@ -162,6 +130,86 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 							Secret: kubeadmapiv1alpha3.SecretFileSource{
 								Name: customFilesSecretName(clusterID),
 								Key:  kubeProxyConfigKey,
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/ca.crt",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: caCertsName(clusterID),
+								Key:  "tls.crt",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/ca.key",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: caCertsName(clusterID),
+								Key:  "tls.key",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/etcd/ca.key",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: caCertsName(clusterID),
+								Key:  "tls.key",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/etcd/ca.crt",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: caCertsName(clusterID),
+								Key:  "tls.crt",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/sa.pub",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: saCertsName(clusterID),
+								Key:  "tls.crt",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/sa.key",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: saCertsName(clusterID),
+								Key:  "tls.key",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/etcd/old.key",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: etcdCertsName(clusterID),
+								Key:  "key",
+							},
+						},
+					},
+					{
+						Path:  "/etc/kubernetes/pki/etcd/old.crt",
+						Owner: "root:root",
+						ContentFrom: &kubeadmapiv1alpha3.FileSource{
+							Secret: kubeadmapiv1alpha3.SecretFileSource{
+								Name: etcdCertsName(clusterID),
+								Key:  "crt",
 							},
 						},
 					},

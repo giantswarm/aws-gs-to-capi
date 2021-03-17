@@ -8,6 +8,7 @@ import (
 	"k8s.io/kubectl/pkg/scheme"
 
 	awsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
+	capiawsexpv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/exp/api/v1alpha3"
 	apiv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	capi "sigs.k8s.io/cluster-api/api/v1alpha3"
 	kubeadmbootstrapv1alpha3 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
@@ -27,6 +28,7 @@ func GetCtrlClient(context string) (ctrl.Client, error) {
 		corev1.AddToScheme,
 		awsv1alpha3.AddToScheme,
 		kubeadmbootstrapv1alpha3.AddToScheme,
+		capiawsexpv1alpha3.AddToScheme,
 	}
 
 	// Extend the global client-go scheme which is used by all the tools under

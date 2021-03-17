@@ -26,9 +26,10 @@ type GSClusterCrs struct {
 	AWSMachineDeployments []*awsv1alpha2.AWSMachineDeployment
 	G8sControlPlane       *awsv1alpha2.G8sControlPlane
 
-	EtcdCerts         *v1.Secret
-	EtcdEncryptionKey *v1.Secret
-	KubeproxyCerts    *v1.Secret
+	EtcdCerts      *v1.Secret
+	SACerts        *v1.Secret
+	EncryptionKey  *v1.Secret
+	KubeproxyCerts *v1.Secret
 }
 
 func FetchCrs(clusterID string) (*GSClusterCrs, error) {
@@ -93,13 +94,19 @@ func FetchCrs(clusterID string) (*GSClusterCrs, error) {
 	if err != nil {
 		return nil, microerror.Mask(err)
 	}
-	crs.EtcdEncryptionKey = e
+	crs.EncryptionKey = e
 
 	k, err := c.CoreV1().Secrets(defaultNamespace).Get(fmt.Sprintf("%s-worker", clusterID), metav1.GetOptions{})
 	if err != nil {
 		return nil, microerror.Mask(err)
 	}
 	crs.KubeproxyCerts = k
+
+	sa, err := c.CoreV1().Secrets(defaultNamespace).Get(fmt.Sprintf("%s-service-account", clusterID), metav1.GetOptions{})
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+	crs.SACerts = sa
 
 	return crs, nil
 }

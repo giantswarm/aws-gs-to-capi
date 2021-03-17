@@ -7,6 +7,7 @@ require (
 	github.com/giantswarm/apiextensions v0.4.20
 	github.com/giantswarm/microerror v0.3.0
 	github.com/google/gofuzz v1.2.0 // indirect
+	github.com/hashicorp/vault/api v1.0.4
 	github.com/onsi/ginkgo v1.14.2 // indirect
 	github.com/onsi/gomega v1.10.3 // indirect
 	github.com/prometheus/client_golang v1.8.0 // indirect
@@ -21,5 +22,4 @@ require (
 	sigs.k8s.io/cluster-api v0.3.14
 	sigs.k8s.io/cluster-api-provider-aws v0.6.4
 	sigs.k8s.io/controller-runtime v0.5.14
-	sigs.k8s.io/yaml v1.2.0
 )

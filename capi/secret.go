@@ -14,6 +14,7 @@ const (
 	encryptionKeyKey       = "encryption"
 	kubeProxyKubeconfigKey = "kubeproxy-kubeconfig"
 	kubeProxyConfigKey     = "kubeproxy-config"
+	vaultCAPrivateKeyKey   = "vaultca-private-key"
 )
 
 type CustomFilesParams struct {
@@ -42,6 +43,7 @@ func customFilesSecret(params CustomFilesParams) (v1.Secret, error) {
 	if err != nil {
 		return v1.Secret{}, microerror.Mask(err)
 	}
+
 	o := v1.Secret{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Secret",
@@ -77,6 +79,14 @@ func customFilesSecretName(clusterID string) string {
 	return fmt.Sprintf("%s-custom-files", clusterID)
 }
 
-func oldEtcdCertsSecretName(clusterID string) string {
-	return fmt.Sprintf("%s-old-etcd-certs", clusterID)
+func etcdCertsName(clusterID string) string {
+	return fmt.Sprintf("%s-etcd", clusterID)
+}
+
+func saCertsName(clusterID string) string {
+	return fmt.Sprintf("%s-sa", clusterID)
+}
+
+func caCertsName(clusterID string) string {
+	return fmt.Sprintf("%s-ca", clusterID)
 }

@@ -1,12 +1,8 @@
 package capi
 
-const (
-	unitTmpl = `#!/bin/sh
-# set proper hostname
+const unitTmpl = `#!/bin/sh
+# set proper hostname - necessary for kubeProxy to detect node name
 hostnamectl set-hostname $(curl http://169.254.169.254/latest/meta-data/local-hostname)
-
-# create etcd ca bundle
-cat /etc/kubernetes/pki/etcd/ca.crt /etc/kubernetes/pki/etcd/old-etcd-ca.pem > /etc/kubernetes/pki/etcd/ca-bundle.pem
 
 # get ETCDCTL
 DOWNLOAD_URL=https://github.com/etcd-io/etcd/releases/download
@@ -23,9 +19,9 @@ IP=$(ip route | grep default | awk '{print $9}')
 
 # add new member to the old etcd cluster
 while ! new_cluster=$(/tmp/etcd/etcdctl \
-	--cacert=/etc/kubernetes/pki/etcd/old-etcd-ca.pem \
-	--key=/etc/kubernetes/pki/etcd/old-etcd-key.pem \
-	--cert=/etc/kubernetes/pki/etcd/old-etcd-cert.pem \
+	--cacert=/etc/kubernetes/pki/etcd/ca.crt \
+	--key=/etc/kubernetes/pki/etcd/old.key \
+	--cert=/etc/kubernetes/pki/etcd/old.crt \
 	--endpoints=https://{{.ETCDEndpoint}}:2379 \
 	--peer-urls="https://${IP}:2380" \
 	member \
@@ -44,14 +40,10 @@ export ${new_cluster}
 # copy tmpl
 cp /tmp/kubeadm.yaml /tmp/kubeadm.yaml.tmpl
 
-sed -e '/external/,+4d' /tmp/kubeadm.yaml.tmpl
-
 # fill the initial cluster variable into kubeadm config
 envsubst < /tmp/kubeadm.yaml.tmpl > /tmp/kubeadm.yaml
 
 `
-)
-
 const encryptionConfigTmpl = `kind: EncryptionConfig
 apiVersion: v1
 resources:
