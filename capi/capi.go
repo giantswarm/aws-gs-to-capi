@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	v1alpha32 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
+	"sigs.k8s.io/cluster-api/exp/api/v1alpha3"
 
 	"github.com/giantswarm/aws-gs-to-capi/vault"
 	"github.com/giantswarm/microerror"
@@ -29,8 +31,13 @@ type Crs struct {
 	ControlPlaneMachineTemplate *awsv1alpha3.AWSMachineTemplate
 	OldControlPlaneMachines     []apiv1alpha3.Machine
 
-	MachinePool                []*capiawsexpv1alpha3.AWSMachinePool
-	MachineDeploymentTemplates []*awsv1alpha3.AWSMachineTemplate
+	MachinePools []*MachinePoolSpec
+}
+
+type MachinePoolSpec struct {
+	AWSMachinePool *capiawsexpv1alpha3.AWSMachinePool
+	MachinePool    *v1alpha3.MachinePool
+	KubeadmConfig  *v1alpha32.KubeadmConfig
 }
 
 func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*Crs, error) {
@@ -106,17 +113,25 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 	}
 
 	for _, md := range gsCRs.AWSMachineDeployments {
-		mp, err := awsmachinepool(md, gsCRs.AWSCluster.Spec.Provider.Region, clusterID)
+		awsmp, err := awsmachinepool(md, gsCRs.AWSCluster.Spec.Provider.Region, clusterID)
 		if err != nil {
 			return nil, microerror.Mask(err)
 		}
-		crs.MachinePool = append(crs.MachinePool, mp)
+
+		mp := machinePool(md, clusterID, k8sVersion)
+		kubeadmConfig := machinePoolKubeAdmConfig(md, clusterID)
+
+		crs.MachinePools = append(crs.MachinePools, &MachinePoolSpec{
+			AWSMachinePool: awsmp,
+			MachinePool:    mp,
+			KubeadmConfig:  kubeadmConfig,
+		})
 	}
 
 	return crs, nil
 }
 
-func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
+func CreateControlPlaneResources(crs *Crs, k8sContext string) error {
 	ctx := context.Background()
 	ctrl, err := ctrlclient.GetCtrlClient(k8sContext)
 	if err != nil {
@@ -157,9 +172,26 @@ func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 	if err != nil {
 		return microerror.Mask(err)
 	}
+	return nil
+}
 
-	for _, mp := range crs.MachinePool {
-		err = ctrl.Create(ctx, mp)
+func CreateNodePoolResources(crs *Crs, k8sContext string) error {
+	ctx := context.Background()
+	ctrl, err := ctrlclient.GetCtrlClient(k8sContext)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	for _, mp := range crs.MachinePools {
+		err = ctrl.Create(ctx, mp.AWSMachinePool)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+		err = ctrl.Create(ctx, mp.KubeadmConfig)
+		if err != nil {
+			return microerror.Mask(err)
+		}
+		err = ctrl.Create(ctx, mp.MachinePool)
 		if err != nil {
 			return microerror.Mask(err)
 		}
@@ -168,7 +200,23 @@ func CreateResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 	return nil
 }
 
-func DeleteResourcesInTargetK8s(crs *Crs, k8sContext string) error {
+func DeleteNPResources(crs *Crs, k8sContext string) error {
+	ctx := context.Background()
+	ctrl, err := ctrlclient.GetCtrlClient(k8sContext)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+
+	for _, mp := range crs.MachinePools {
+		err = ctrl.Delete(ctx, mp.AWSMachinePool)
+		err = ctrl.Delete(ctx, mp.KubeadmConfig)
+		err = ctrl.Delete(ctx, mp.MachinePool)
+	}
+
+	return nil
+}
+
+func DeleteCPResources(crs *Crs, k8sContext string) error {
 	ctx := context.Background()
 	ctrl, err := ctrlclient.GetCtrlClient(k8sContext)
 	if err != nil {
@@ -200,14 +248,6 @@ func DeleteResourcesInTargetK8s(crs *Crs, k8sContext string) error {
 	if err != nil {
 		return microerror.Mask(err)
 	}
-
-	for _, mp := range crs.MachinePool {
-		err = ctrl.Delete(ctx, mp)
-		if err != nil {
-			return microerror.Mask(err)
-		}
-	}
-
 	return nil
 }
 
