@@ -9,7 +9,6 @@ import (
 	"github.com/giantswarm/microerror"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capiawsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
-	apiv1alpha3 "sigs.k8s.io/cluster-api/api/v1alpha3"
 )
 
 const (
@@ -55,9 +54,6 @@ func transformAWSCluster(awsCluster *giantswarmawsalpha3.AWSCluster) (*capiawsv1
 		},
 
 		Spec: capiawsv1alpha3.AWSClusterSpec{
-			ControlPlaneEndpoint: apiv1alpha3.APIEndpoint{
-				Port: 443,
-			},
 			NetworkSpec: capiawsv1alpha3.NetworkSpec{
 				VPC: capiawsv1alpha3.VPCSpec{
 					ID:                awsCluster.Status.Provider.Network.VPCID,

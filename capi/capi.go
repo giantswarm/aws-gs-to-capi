@@ -74,13 +74,18 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 		return nil, microerror.Mask(err)
 	}
 
+	caPrivKey, err := vault.GetVaultCAKey(clusterID)
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+
 	gsCRs.EtcdCerts.Name = etcdCertsName(clusterID)
 	gsCRs.EtcdCerts.APIVersion = secret.APIVersion
 	gsCRs.EtcdCerts.Kind = secret.Kind
 	gsCRs.EtcdCerts.ResourceVersion = ""
 	gsCRs.EtcdCerts.UID = ""
-	gsCRs.EtcdCerts.Data["tls.crt"] = gsCRs.EtcdCerts.Data["crt"]
-	gsCRs.EtcdCerts.Data["tls.key"] = gsCRs.EtcdCerts.Data["key"]
+	gsCRs.EtcdCerts.Data["tls.crt"] = gsCRs.EtcdCerts.Data["ca"]
+	gsCRs.EtcdCerts.Data["tls.key"] = []byte(caPrivKey)
 
 	gsCRs.SACerts.Name = saCertsName(clusterID)
 	gsCRs.SACerts.APIVersion = secret.APIVersion
@@ -90,15 +95,8 @@ func TransformGsToCAPICrs(gsCRs *giantswarm.GSClusterCrs, k8sVersion string) (*C
 	gsCRs.SACerts.Data["tls.crt"] = gsCRs.SACerts.Data["crt"]
 	gsCRs.SACerts.Data["tls.key"] = gsCRs.SACerts.Data["key"]
 
-	caPrivKey, err := vault.GetVaultCAKey(clusterID)
-	if err != nil {
-		return nil, microerror.Mask(err)
-	}
-
 	caCerts := gsCRs.EtcdCerts.DeepCopy()
 	caCerts.Name = caCertsName(clusterID)
-	caCerts.Data["tls.crt"] = caCerts.Data["ca"]
-	caCerts.Data["tls.key"] = []byte(caPrivKey)
 
 	crs := &Crs{
 		CustomFiles: &secret,
@@ -227,8 +225,15 @@ func DeleteCPResources(crs *Crs, k8sContext string) error {
 	if err != nil {
 		return microerror.Mask(err)
 	}
-
 	err = ctrl.Delete(ctx, crs.EtcdCerts)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Delete(ctx, crs.SACerts)
+	if err != nil {
+		return microerror.Mask(err)
+	}
+	err = ctrl.Delete(ctx, crs.CACerts)
 	if err != nil {
 		return microerror.Mask(err)
 	}

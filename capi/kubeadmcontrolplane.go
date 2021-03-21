@@ -2,14 +2,15 @@ package capi
 
 import (
 	"fmt"
-	"github.com/giantswarm/aws-gs-to-capi/giantswarm"
+
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capiawsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
 	kubeadmapiv1alpha3 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha3"
 	kubeadmtypev1beta1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/types/v1beta1"
-
 	kubeadmv1alpha3 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
+
+	"github.com/giantswarm/aws-gs-to-capi/giantswarm"
 )
 
 func kubeAdmControlPlaneName(clusterID string) string {
@@ -82,6 +83,9 @@ func transformKubeAdmControlPlane(gsCRs *giantswarm.GSClusterCrs, k8sVersion str
 							"cloud-provider": "aws",
 						},
 						Name: "{{ ds.meta_data.local_hostname }}",
+					},
+					LocalAPIEndpoint: kubeadmtypev1beta1.APIEndpoint{
+						BindPort: 443,
 					},
 				},
 				JoinConfiguration: &kubeadmtypev1beta1.JoinConfiguration{
