@@ -1,9 +1,6 @@
 package capi
 
 const unitTmpl = `#!/bin/sh
-# set proper hostname - necessary for kubeProxy to detect node name
-hostnamectl set-hostname $(curl http://169.254.169.254/latest/meta-data/local-hostname)
-
 # get ETCDCTL
 DOWNLOAD_URL=https://github.com/etcd-io/etcd/releases/download
 ETCD_VER=v3.4.13

@@ -159,6 +159,7 @@ func machinePoolKubeAdmConfig(d *giantswarmawsalpha3.AWSMachineDeployment, clust
 				NodeRegistration: kubeadmtypev1beta1.NodeRegistrationOptions{
 					KubeletExtraArgs: map[string]string{
 						"cloud-provider": "aws",
+						"node-labels":    "node.kubernetes.io/worker,role=worker",
 					},
 					Name: "{{ ds.meta_data.local_hostname }}",
 				},

@@ -40,9 +40,6 @@ func transformCluster(gsCRs *giantswarm.GSClusterCrs) *apiv1alpha3.Cluster {
 				ServiceDomain: "cluster.local",
 				APIServerPort: aws.Int32(443),
 			},
-			ControlPlaneEndpoint: apiv1alpha3.APIEndpoint{
-				Port: 443,
-			},
 			ControlPlaneRef: &v1.ObjectReference{
 				APIVersion: kubeadmv1alpha3.GroupVersion.String(),
 				Name:       kubeAdmControlPlaneName(clusterID),

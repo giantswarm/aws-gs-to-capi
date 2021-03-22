@@ -45,7 +45,7 @@ func mainError() error {
 		fmt.Printf("ERROR: target context cannot be empty")
 		return nil
 	}
-	fmt.Printf("\n\n")
+	fmt.Printf("\n")
 
 	gsCrs, err := giantswarm.FetchCrs(f.ClusterID)
 	if err != nil {
@@ -89,7 +89,7 @@ func mainError() error {
 		if err != nil {
 			return microerror.Mask(err)
 		}
-		err = dns.DeleteDNSRecords(capiCRs.Cluster.Name, f.AWSRegion)
+		err = dns.DeleteDNSRecords(capiCRs.Cluster.Name, fmt.Sprintf("%s.k8s.%s", capiCRs.Cluster.Name, gsCrs.AWSCluster.Spec.Cluster.DNS.Domain), f.AWSRegion, f.Context)
 		if err != nil {
 			return microerror.Mask(err)
 		}
@@ -109,14 +109,14 @@ func mainError() error {
 			return microerror.Mask(err)
 		}
 	} else if isDeleteDNS() {
-		err = dns.DeleteDNSRecords(capiCRs.Cluster.Name, f.AWSRegion)
+		err = dns.DeleteDNSRecords(capiCRs.Cluster.Name, fmt.Sprintf("%s.k8s.%s", capiCRs.Cluster.Name, gsCrs.AWSCluster.Spec.Cluster.DNS.Domain), f.AWSRegion, f.Context)
 		if err != nil {
 			return microerror.Mask(err)
 		}
 	} else {
 		fmt.Printf("Error: Did not found requested command, exiting.\n")
 	}
-	fmt.Printf("\n\n")
+	fmt.Printf("\n")
 
 	return nil
 }

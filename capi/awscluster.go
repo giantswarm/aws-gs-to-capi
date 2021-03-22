@@ -66,7 +66,6 @@ func transformAWSCluster(awsCluster *giantswarmawsalpha3.AWSCluster) (*capiawsv1
 			Bastion: capiawsv1alpha3.Bastion{
 				Enabled: false,
 			},
-			ControlPlaneLoadBalancer: &capiawsv1alpha3.AWSLoadBalancerSpec{},
 		},
 	}
 
