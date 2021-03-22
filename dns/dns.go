@@ -74,48 +74,6 @@ func updateAPIDNS(dnsDomain string, lbName string, lbDNS string, lbRegion string
 	}
 
 	elbCLient := elb.New(awsSession)
-	{
-		/*
-			i := &elb.DeleteLoadBalancerListenersInput{
-				LoadBalancerName:  aws.String(lbName),
-				LoadBalancerPorts: []*int64{aws.Int64(443)}}
-			_, err := elbCLient.DeleteLoadBalancerListeners(i)
-			if err != nil {
-				return microerror.Mask(err)
-			}
-			i2 := &elb.CreateLoadBalancerListenersInput{
-				LoadBalancerName: aws.String(lbName),
-				Listeners: []*elb.Listener{
-					{
-						LoadBalancerPort: aws.Int64(443),
-						InstancePort:     aws.Int64(443),
-						InstanceProtocol: aws.String("TCP"),
-						Protocol:         aws.String("TCP"),
-					},
-				}}
-			_, err = elbCLient.CreateLoadBalancerListeners(i2)
-			if err != nil {
-				return microerror.Mask(err)
-			}
-
-			i3 := &elb.ConfigureHealthCheckInput{
-				LoadBalancerName: aws.String(lbName),
-				HealthCheck: &elb.HealthCheck{
-					HealthyThreshold:   aws.Int64(2),
-					Interval:           aws.Int64(5),
-					Timeout:            aws.Int64(3),
-					UnhealthyThreshold: aws.Int64(1),
-					Target:             aws.String("SSL:443"),
-				}}
-
-			_, err = elbCLient.ConfigureHealthCheck(i3)
-			if err != nil {
-				return microerror.Mask(err)
-			}
-
-			fmt.Printf("Reconfigured ELB to forward traffic to port 443\n")
-		*/
-	}
 
 	for {
 		i := &elb.DescribeInstanceHealthInput{LoadBalancerName: aws.String(lbName)}
