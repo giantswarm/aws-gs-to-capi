@@ -4,7 +4,7 @@ Guide how migrate cluster `${CLUSTER_ID}` from GS MC `${OLD_MC}` to CAPA MC `${C
 ## prereq
 - create kubeconfig and vaultconfig for the old MC (where GS cluster is located)
   - `opsctl create kubeconfig -i ${OLD_MC}`
-  - `opsctl create vaultconfig -i ${OLD_MC}
+  - `opsctl create vaultconfig -i ${OLD_MC}`
   - export the variables from the vaultconfig
 - create kubeconfig for the new CAPI MC  - `${CAPI_MC}`
 - export AWS credentials for the AWS account where the cluster is located
@@ -19,7 +19,7 @@ before running be sure to set current kubernetes contex to `${OLD_MC}`
 ```
 ./aws-gs-to-capi create cp --context=${CAPI_MC} --cluster-id=${CLUSTER_ID}
 ./aws-gs-to-capi update dns --context=${CAPI_MC} --cluster-id=${CLUSTER_ID}
-#  now you need to remove manifets from old masters (specialy api server and controller manager), atm this is not automated
+#  now you need to remove manifests from old masters (specialy `api server` and `controller manager`), atm this is not automated
 ./aws-gs-to-capi create np --context=${CAPI_MC} --cluster-id=${CLUSTER_ID}
 ```
 
