@@ -6,10 +6,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	giantswarmawsalpha3 "github.com/giantswarm/apiextensions/pkg/apis/infrastructure/v1alpha2"
+	"github.com/giantswarm/microerror"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capiawsv1alpha3 "sigs.k8s.io/cluster-api-provider-aws/api/v1alpha3"
-
-	"github.com/giantswarm/microerror"
 )
 
 const (
@@ -66,7 +65,6 @@ func transformAWSCluster(awsCluster *giantswarmawsalpha3.AWSCluster) (*capiawsv1
 			Region: awsCluster.Spec.Provider.Region,
 			Bastion: capiawsv1alpha3.Bastion{
 				Enabled: false,
-
 			},
 		},
 	}
@@ -89,7 +87,7 @@ func fetchClusterSubnets(region string, vpcID string) (capiawsv1alpha3.Subnets, 
 				Values: aws.StringSlice([]string{vpcID}),
 			},
 			{
-				Name: aws.String("tag:giantswarm.io/stack"),
+				Name:   aws.String("tag:giantswarm.io/stack"),
 				Values: aws.StringSlice([]string{"tccp"}),
 			},
 		},

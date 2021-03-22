@@ -2,6 +2,8 @@ package giantswarm
 
 import (
 	"fmt"
+	v1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 	"os"
 	"path/filepath"
 
@@ -23,6 +25,11 @@ type GSClusterCrs struct {
 	AWSControlPlane       *awsv1alpha2.AWSControlPlane
 	AWSMachineDeployments []*awsv1alpha2.AWSMachineDeployment
 	G8sControlPlane       *awsv1alpha2.G8sControlPlane
+
+	EtcdCerts      *v1.Secret
+	SACerts        *v1.Secret
+	EncryptionKey  *v1.Secret
+	KubeproxyCerts *v1.Secret
 }
 
 func FetchCrs(clusterID string) (*GSClusterCrs, error) {
@@ -72,6 +79,35 @@ func FetchCrs(clusterID string) (*GSClusterCrs, error) {
 		crs.AWSMachineDeployments = append(crs.AWSMachineDeployments, &md)
 	}
 
+	c, err := K8sClient()
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+
+	s, err := c.CoreV1().Secrets(defaultNamespace).Get(fmt.Sprintf("%s-etcd1", clusterID), metav1.GetOptions{})
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+	crs.EtcdCerts = s
+
+	e, err := c.CoreV1().Secrets(defaultNamespace).Get(fmt.Sprintf("%s-encryption", clusterID), metav1.GetOptions{})
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+	crs.EncryptionKey = e
+
+	k, err := c.CoreV1().Secrets(defaultNamespace).Get(fmt.Sprintf("%s-worker", clusterID), metav1.GetOptions{})
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+	crs.KubeproxyCerts = k
+
+	sa, err := c.CoreV1().Secrets(defaultNamespace).Get(fmt.Sprintf("%s-service-account", clusterID), metav1.GetOptions{})
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+	crs.SACerts = sa
+
 	return crs, nil
 }
 
@@ -89,6 +125,24 @@ func ApiClient() (*versioned.Clientset, error) {
 	}
 
 	client, err := versioned.NewForConfig(config)
+
+	return client, nil
+}
+
+func K8sClient() (*kubernetes.Clientset, error) {
+	home, exists := os.LookupEnv("HOME")
+	if !exists {
+		home = "/root"
+	}
+
+	configPath := filepath.Join(home, ".kube", "config")
+
+	config, err := clientcmd.BuildConfigFromFlags("", configPath)
+	if err != nil {
+		return nil, microerror.Mask(err)
+	}
+
+	client, err := kubernetes.NewForConfig(config)
 
 	return client, nil
 }

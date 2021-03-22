@@ -2,6 +2,7 @@ package capi
 
 import (
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
 	v1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,9 +34,11 @@ func transformCluster(gsCRs *giantswarm.GSClusterCrs) *apiv1alpha3.Cluster {
 				Pods: &apiv1alpha3.NetworkRanges{
 					CIDRBlocks: []string{gsCRs.AWSCluster.Spec.Provider.Pods.CIDRBlock},
 				},
-				//Services: &apiv1alpha3.NetworkRanges{
-					//			CIDRBlocks: []string{gsCRs.Cluster.Spec.ClusterNetwork.Services.CIDRBlocks[0]},
-				//},
+				Services: &apiv1alpha3.NetworkRanges{
+					CIDRBlocks: []string{"172.31.0.0/16"},
+				},
+				ServiceDomain: "cluster.local",
+				APIServerPort: aws.Int32(443),
 			},
 			ControlPlaneRef: &v1.ObjectReference{
 				APIVersion: kubeadmv1alpha3.GroupVersion.String(),

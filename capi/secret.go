@@ -6,84 +6,40 @@ import (
 	"github.com/giantswarm/microerror"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"strings"
 	"text/template"
 )
 
 const (
-	unitTmpl = `[Unit]
-Description=Attach etcd dependencies
-Requires=network.target
-After=network.target
-
-[Service]
-Environment="URL=https://github.com/giantswarm/aws-attach-etcd-dep/releases/download/v0.1.0-capi/aws-attach-etcd-dep"
-Environment="NAME=%p.service"
-Environment="DEVICE=/dev/xvdh"
-Environment="FSTYPE=ext4"
-Environment="MOUNT_PATH=/var/lib/etcd"
-Environment="CLUSTER_ID={{.ClusterID}}"
-Type=oneshot
-RemainAfterExit=yes
-ExecStartPre=/bin/rm -rf /tmp/aws-attach-etcd-dep
-ExecStartPre=/usr/bin/wget https://github.com/giantswarm/aws-attach-etcd-dep/releases/download/v0.1.0-capi/aws-attach-etcd-dep -O /tmp/aws-attach-etcd-dep
-ExecStartPre=/bin/chmod +x /tmp/aws-attach-etcd-dep
-ExecStartPre=/bin/bash -c "/bin/mkdir -p ${MOUNT_PATH}"
-{{- if .NVMEDisk }}
-ExecStartPre=/bin/bash -c "/bin/ln -s /dev/nvme1n1 ${DEVICE}"
-{{- end }}
-ExecStart=/bin/bash -c "/tmp/aws-attach-etcd-dep \
-      --eni-device-index=1 \
-      --eni-device-name=ens4 \
-      --eni-tag-key=giantswarm.io/cluster \
-      --eni-tag-value=${CLUSTER_ID} \
-      --mount-disk=true \
-      --mount-disk-path=${MOUNT_PATH} \
-      --volume-device-name=${DEVICE} \
-      --volume-device-filesystem-type=${FSTYPE} \
-      --volume-device-label=etcd \
-      --volume-tag-key=giantswarm.io/cluster \
-      --volume-tag-value=${CLUSTER_ID}"
-ExecStartPost=-/bin/bash -c "/bin/mkdir -p ${MOUNT_PATH}/data && /bin/mv ${MOUNT_PATH}/member ${MOUNT_PATH}/data/"
-ExecStartPost=/bin/systemctl daemon-reload
-ExecStartPost=/bin/systemctl restart systemd-networkd
-ExecStartPost=/bin/bash -c "while [ ! -f /tmp/kubeadm.yaml ]; do sleep 2; done && \
-							while [ ! -f  /usr/bin/kubeadm ]; do sleep 2; done && \
-							sleep 20s && \
-							/usr/bin/kubeadm init --ignore-preflight-errors='DirAvailable--var-lib-etcd-data' --config /tmp/kubeadm.yaml"
-
-[Install]
-WantedBy=multi-user.target
-`
+	migrationScriptKey     = "migration"
+	encryptionKeyKey       = "encryption"
+	kubeProxyKubeconfigKey = "kubeproxy-kubeconfig"
+	kubeProxyConfigKey     = "kubeproxy-config"
+	vaultCAPrivateKeyKey   = "vaultca-private-key"
 )
 
-const (
-	unitSecretKey      = "unit"
-	deviceNameNVME     = "nvme1n1"
-)
-
-func renderTemplate(clusterID string, nvmeDisk bool) (string, error) {
-	p := struct {
-		ClusterID  string
-		NVMEDisk bool
-	}{
-		ClusterID:  clusterID,
-		NVMEDisk: nvmeDisk,
-	}
-
-	var buff bytes.Buffer
-	t := template.Must(template.New("unit").Parse(unitTmpl))
-
-	err := t.Execute(&buff, p)
-	if err != nil {
-		return "", microerror.Mask(err)
-	}
-
-	return buff.String(), nil
+type CustomFilesParams struct {
+	APIEndpoint   string
+	ETCDEndpoint  string
+	EncryptionKey string
+	ClusterID     string
+	Namespace     string
+	KubeProxyCA   string
+	KubeProxyKey  string
+	KubeProxyCrt  string
 }
 
-func unitSecret(clusterID string, namespace string, instanceType string) (v1.Secret, error) {
-	content, err := renderTemplate(clusterID, isNVMEDisk(instanceType))
+func customFilesSecret(params CustomFilesParams) (v1.Secret, error) {
+	migrationScriptContent, err := renderTemplate(unitTmpl, params)
+	if err != nil {
+		return v1.Secret{}, microerror.Mask(err)
+	}
+
+	encryptionKeyContent, err := renderTemplate(encryptionConfigTmpl, params)
+	if err != nil {
+		return v1.Secret{}, microerror.Mask(err)
+	}
+
+	kubeProxyKubeconfigContent, err := renderTemplate(kubeConfigTmpl, params)
 	if err != nil {
 		return v1.Secret{}, microerror.Mask(err)
 	}
@@ -94,26 +50,43 @@ func unitSecret(clusterID string, namespace string, instanceType string) (v1.Sec
 			APIVersion: v1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      unitSecretName(clusterID),
-			Namespace: namespace,
+			Name:      customFilesSecretName(params.ClusterID),
+			Namespace: params.Namespace,
 		},
 		Data: map[string][]byte{
-			unitSecretKey: []byte(content),
+			migrationScriptKey:     []byte(migrationScriptContent),
+			encryptionKeyKey:       []byte(encryptionKeyContent),
+			kubeProxyKubeconfigKey: []byte(kubeProxyKubeconfigContent),
+			kubeProxyConfigKey:     []byte(kubeProxyConfig),
 		},
 	}
 
 	return o, nil
 }
 
-func unitSecretName(clusterID string) string {
-	return fmt.Sprintf("%s-etcd3-attach-deps-unit", clusterID)
+func renderTemplate(tmpl string, params interface{}) (string, error) {
+	var buff bytes.Buffer
+	t := template.Must(template.New("tmpl").Parse(tmpl))
+
+	err := t.Execute(&buff, params)
+	if err != nil {
+		return "", microerror.Mask(err)
+	}
+	return buff.String(), nil
 }
 
-func isNVMEDisk(instanceType string) bool {
-	if strings.HasPrefix(instanceType, "m5") {
-		return true
-	} else {
-		return false
-	}
+func customFilesSecretName(clusterID string) string {
+	return fmt.Sprintf("%s-custom-files", clusterID)
+}
 
+func etcdCertsName(clusterID string) string {
+	return fmt.Sprintf("%s-etcd", clusterID)
+}
+
+func saCertsName(clusterID string) string {
+	return fmt.Sprintf("%s-sa", clusterID)
+}
+
+func caCertsName(clusterID string) string {
+	return fmt.Sprintf("%s-ca", clusterID)
 }
